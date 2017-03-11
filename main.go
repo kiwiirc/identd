@@ -12,11 +12,15 @@ import (
 )
 
 var identLookup *IdentdLookup
+var isLogging bool
 
 func main() {
 	rpcListenerStr := flag.String("rpc", "tcp://:1133", "RPC socket listener")
 	identdListenerStr := flag.String("identd", "tcp://:113", "Identd listener")
+	logging := flag.Bool("v", false, "Verbose logging output")
 	flag.Parse()
+
+	isLogging = *logging
 
 	rpcListener, err := listenerFromString(*rpcListenerStr)
 	if err != nil {
@@ -68,6 +72,9 @@ func rpcSocketHandler(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if isLogging {
+			log.Printf("Raw RPC in: %s", line)
+		}
 		parts := strings.Split(line, " ")
 
 		if parts[0] == "id" {
@@ -92,6 +99,9 @@ func rpcSocketHandler(conn net.Conn) {
 			}
 
 			if lport > 0 && rport > 0 && username != "" {
+				if isLogging {
+					log.Printf("Adding entry %d %d %s %s %s", lport, rport, inet, username, appID)
+				}
 				identLookup.AddEntry(lport, rport, inet, username, appID)
 			}
 
@@ -112,11 +122,17 @@ func rpcSocketHandler(conn net.Conn) {
 			e := identLookup.Lookup(lport, rport, inet)
 
 			if e != nil {
+				if isLogging {
+					log.Printf("Removing entry %d %d %s %s %s", e.LocalPort, e.RemotePort, e.Inet, e.Username, e.AppID)
+				}
 				identLookup.RemoveEntry(e)
 			}
 
 		} else if parts[0] == "clear" {
 			// clear
+			if isLogging {
+				log.Printf("Clearing entries for app %s", appID)
+			}
 			identLookup.ClearAppID(appID)
 
 		} else if parts[0] == "lookup" {
@@ -160,21 +176,30 @@ func identdSocketHandler(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Split(line, ", ")
+		if isLogging {
+			log.Printf("Raw identd in: %s", line)
+		}
+		parts := strings.Split(line, ",")
 
 		if len(parts) != 2 {
 			conn.Close()
 			continue
 		}
 
-		lport, _ := strconv.Atoi(parts[0])
-		rport, _ := strconv.Atoi(parts[1])
+		lport, _ := strconv.Atoi(strings.Trim(parts[0], " "))
+		rport, _ := strconv.Atoi(strings.Trim(parts[1], " "))
 		inet, _, _ := net.SplitHostPort(conn.LocalAddr().String())
 
 		entry := identLookup.Lookup(lport, rport, inet)
 		if entry == nil {
+			if isLogging {
+				log.Printf("Identd lookup for %d %d did not find a user", lport, rport)
+			}
 			fmt.Fprintf(conn, "%d, %d : ERROR : NO-USER", lport, rport)
 		} else {
+			if isLogging {
+				log.Printf("Identd lookup for %d %d found %s", lport, rport, entry.Username)
+			}
 			fmt.Fprintf(conn, "%d, %d : USERID : KiwiIRC : %s", lport, rport, entry.Username)
 		}
 
