@@ -14,7 +14,7 @@ import (
 var identLookup *IdentdLookup
 
 func main() {
-	rpcListenerStr := flag.String("rpc", "tcp://:1133", "Control socket listener")
+	rpcListenerStr := flag.String("rpc", "tcp://:1133", "RPC socket listener")
 	identdListenerStr := flag.String("identd", "tcp://:113", "Identd listener")
 	flag.Parse()
 
@@ -42,7 +42,7 @@ func main() {
 func listenerFromString(inp string) (net.Listener, error) {
 	parts := strings.Split(inp, "://")
 	if len(parts) != 2 {
-		return nil, errors.New("Invalid control socket")
+		return nil, errors.New("Invalid interface, " + inp)
 	}
 
 	serv, err := net.Listen(parts[0], parts[1])
